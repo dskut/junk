@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <sys/time.h>
 #include <climits>
+#include <boost/pool/pool_alloc.hpp>
 using namespace std;
 
 class Timer {
@@ -163,30 +164,56 @@ void testDefault(vector<string>& strings, vector<int>& nums) {
 void testCustom(vector<string>& strings, vector<int>& nums) {
     Timer timer;
 
-    typedef map<string, int, less<string>, MyAlloc<pair<string, int> > > MyDict;
     size_t poolSize = 64*1024*1024;
     char* pool = new char[sizeof(int)*poolSize];
     MyAlloc<pair<string, int> > myAlloc(pool);
-    MyDict myDict(less<string>(), myAlloc);
+
+    typedef map<string, int, less<string>, MyAlloc<pair<string, int> > > MyDict;
+    MyDict dict(less<string>(), myAlloc);
 
     timer.reset();
     for (size_t i = 0; i < nums.size(); ++i) {
-        myDict[strings[i]] = nums[i];
+        dict[strings[i]] = nums[i];
     }
     cout << "custom insert " << timer.getMilliseconds() << "ms" << endl;
 
     timer.reset();
     for (size_t i = 0; i < nums.size(); ++i) {
-        nums[i] = myDict[strings[i]];
+        nums[i] = dict[strings[i]];
     }
     cout << "custom read " << timer.getMilliseconds() << "ms" << endl;
 
     timer.reset();
-    for (MyDict::iterator iter = myDict.begin(); iter != myDict.end();) {
-        myDict.erase(iter++);
+    for (MyDict::iterator iter = dict.begin(); iter != dict.end();) {
+        dict.erase(iter++);
     }
     cout << "custom delete " << timer.getMilliseconds() << "ms" << endl;
     delete[] pool;
+}
+
+void testBoost(vector<string>& strings, vector<int>& nums) {
+    Timer timer;
+
+    typedef map<string, int, less<string>, boost::fast_pool_allocator<pair<string, int> > > BoostDict;
+    BoostDict dict;
+
+    timer.reset();
+    for (size_t i = 0; i < nums.size(); ++i) {
+        dict[strings[i]] = nums[i];
+    }
+    cout << "boost insert " << timer.getMilliseconds() << "ms" << endl;
+
+    timer.reset();
+    for (size_t i = 0; i < nums.size(); ++i) {
+        nums[i] = dict[strings[i]];
+    }
+    cout << "boost read " << timer.getMilliseconds() << "ms" << endl;
+
+    timer.reset();
+    for (BoostDict::iterator iter = dict.begin(); iter != dict.end();) {
+        dict.erase(iter++);
+    }
+    cout << "boost delete " << timer.getMilliseconds() << "ms" << endl;
 }
 
 int main(int argc, char** argv) {
@@ -207,7 +234,7 @@ int main(int argc, char** argv) {
 
     testCustom(strings, nums);
     testDefault(strings, nums);
-
+    testBoost(strings, nums);
 
     return 0;
 }
