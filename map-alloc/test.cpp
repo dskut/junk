@@ -14,6 +14,11 @@ class Timer {
 private:
     timespec start_;
 public:
+    Timer()
+    {
+        reset();
+    }
+
     void reset() {
         clock_gettime(CLOCK_REALTIME, &start_);
     }
@@ -43,7 +48,7 @@ string randomString() {
     return res;
 }
 
-template <typename T, size_t PoolSize = 64*1024*1024>
+template <typename T>
 class MyAlloc {
 public:
     char* pool_;
@@ -63,7 +68,6 @@ public:
     };
 
     MyAlloc(char* pool) throw()
-        //: pool_(new char[sizeof(T)*PoolSize])
         : pool_(pool)
         , next_(0)
     {
@@ -87,7 +91,6 @@ public:
 
     ~MyAlloc() throw() {
         //cout << "detor" << endl;
-        //free(pool_);
     }
 
     pointer address(reference x) const {
@@ -122,7 +125,6 @@ public:
     void construct(pointer p, const value_type& val) {
         //cout << "construct" << endl;
         new(p) T(val);
-        //cout << "p = " << p << "; *p = " << *p << endl;
     }
 
     void destroy(pointer p) {
@@ -136,94 +138,78 @@ ostream& operator<<(ostream& o, const pair<string, int>& p) {
     return o;
 }
 
-void testDefault(vector<string>& strings, vector<int>& nums) {
+template <typename Dict>
+void testInsert(Dict& dict, const vector<string>& strings, const vector<int>& nums, const string& prefix) {
     Timer timer;
-    
-    typedef map<string, int> Dict;
-    Dict dict;
-
-    timer.reset();
     for (size_t i = 0; i < nums.size(); ++i) {
-        dict[strings[i]] = nums[i];
+        dict.insert(make_pair(strings[i], nums[i]));
     }
-    cout << "default insert " << timer.getMilliseconds() << "ms" << endl;
-
-    timer.reset();
-    for (size_t i = 0; i < nums.size(); ++i) {
-        nums[i] = dict[strings[i]];
-    }
-    cout << "default read " << timer.getMilliseconds() << "ms" << endl;
-
-    timer.reset();
-    for (Dict::iterator iter = dict.begin(); iter != dict.end();) {
-        dict.erase(iter++);
-    }
-    cout << "default delete " << timer.getMilliseconds() << "ms" << endl;
+    cout << prefix << " insert " << timer.getMilliseconds() << "ms" << endl;
 }
 
-void testCustom(vector<string>& strings, vector<int>& nums) {
+template <typename Dict>
+void testRead(Dict& dict, const vector<string>& strings, const string& prefix) {
     Timer timer;
+    for (size_t i = 0; i < strings.size(); ++i) {
+        (void)dict.find(strings[i]);
+    }
+    cout << prefix << " read " << timer.getMilliseconds() << "ms" << endl;
+}
 
-    size_t poolSize = 64*1024*1024;
+template <typename Dict>
+void testDelete(Dict& dict, const string& prefix) {
+    Timer timer;
+    for (typename Dict::iterator iter = dict.begin(); iter != dict.end();) {
+        dict.erase(iter++);
+    }
+    cout << prefix << " delete " << timer.getMilliseconds() << "ms" << endl;
+}
+
+void runDefault(const vector<string>& strings, const vector<int>& nums) {
+    typedef map<string, int> Dict;
+    Dict dict;
+    string prefix = "default";
+
+    testInsert(dict, strings, nums, prefix);
+    testRead(dict, strings, prefix);
+    testDelete(dict, prefix);
+}
+
+void runCustom(const vector<string>& strings, const vector<int>& nums) {
+    size_t poolSize = 512*1024*1024;
     char* pool = new char[sizeof(int)*poolSize];
     MyAlloc<pair<string, int> > myAlloc(pool);
 
     typedef map<string, int, less<string>, MyAlloc<pair<string, int> > > MyDict;
     MyDict dict(less<string>(), myAlloc);
 
-    timer.reset();
-    for (size_t i = 0; i < nums.size(); ++i) {
-        dict[strings[i]] = nums[i];
-    }
-    cout << "custom insert " << timer.getMilliseconds() << "ms" << endl;
+    string prefix = "custom";
 
-    timer.reset();
-    for (size_t i = 0; i < nums.size(); ++i) {
-        nums[i] = dict[strings[i]];
-    }
-    cout << "custom read " << timer.getMilliseconds() << "ms" << endl;
+    testInsert(dict, strings, nums, prefix);
+    testRead(dict, strings, prefix);
+    testDelete(dict, prefix);
 
-    timer.reset();
-    for (MyDict::iterator iter = dict.begin(); iter != dict.end();) {
-        dict.erase(iter++);
-    }
-    cout << "custom delete " << timer.getMilliseconds() << "ms" << endl;
     delete[] pool;
 }
 
-void testBoost(vector<string>& strings, vector<int>& nums) {
-    Timer timer;
-
+void runBoost(const vector<string>& strings, const vector<int>& nums) {
     typedef map<string, int, less<string>, boost::fast_pool_allocator<pair<string, int> > > BoostDict;
     BoostDict dict;
+    string prefix = "boost";
 
-    timer.reset();
-    for (size_t i = 0; i < nums.size(); ++i) {
-        dict[strings[i]] = nums[i];
-    }
-    cout << "boost insert " << timer.getMilliseconds() << "ms" << endl;
-
-    timer.reset();
-    for (size_t i = 0; i < nums.size(); ++i) {
-        nums[i] = dict[strings[i]];
-    }
-    cout << "boost read " << timer.getMilliseconds() << "ms" << endl;
-
-    timer.reset();
-    for (BoostDict::iterator iter = dict.begin(); iter != dict.end();) {
-        dict.erase(iter++);
-    }
-    cout << "boost delete " << timer.getMilliseconds() << "ms" << endl;
+    testInsert(dict, strings, nums, prefix);
+    testRead(dict, strings, prefix);
+    testDelete(dict, prefix);
 }
 
 int main(int argc, char** argv) {
-    if (argc < 2) {
-        cout << "usage: " << argv[0] << " <count>" << endl;
+    if (argc < 3) {
+        cout << "usage: " << argv[0] << " <d,c,b> <count>" << endl;
         return 1;
     }
     srand(time(NULL));
 
-    int insertCount = atoi(argv[1]);
+    int insertCount = atoi(argv[2]);
     vector<string> strings(insertCount);
     vector<int> nums(insertCount);
 
@@ -232,9 +218,16 @@ int main(int argc, char** argv) {
         nums[i] = randomInt(MaxInt);
     }
 
-    testCustom(strings, nums);
-    testDefault(strings, nums);
-    testBoost(strings, nums);
+    char c = argv[1][0];
+    if (c == 'c') {
+        runCustom(strings, nums);
+    } else if (c == 'd') {
+        runDefault(strings, nums);
+    } else if (c == 'b') {
+        runBoost(strings, nums);
+    } else {
+        cerr << "unknown choice" << endl;
+    }
 
     return 0;
 }
